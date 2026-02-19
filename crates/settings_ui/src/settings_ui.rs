@@ -1159,11 +1159,13 @@ fn render_settings_item(
     h_flex()
         .id(setting_item.title)
         .min_w_0()
+        .gap_4()
         .justify_between()
         .child(
             v_flex()
                 .relative()
-                .w_3_4()
+                .flex_1()
+                .min_w_0()
                 .child(
                     h_flex()
                         .w_full()
@@ -1213,7 +1215,7 @@ fn render_settings_item(
                         .color(Color::Muted),
                 ),
         )
-        .child(control)
+        .child(div().flex_shrink_0().child(control))
         .when(settings_window.sub_page_stack.is_empty(), |this| {
             this.child(render_settings_item_link(
                 setting_item.description,

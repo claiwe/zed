@@ -3039,9 +3039,8 @@ impl Workspace {
                         let mut remaining_dirty_items = Vec::new();
                         let mut serialize_tasks = Vec::new();
                         for (pane, item) in dirty_items {
-                            if let Some(task) = item
-                                .to_serializable_item_handle(cx)
-                                .and_then(|handle| handle.serialize(workspace, true, window, cx))
+                            if let Some(task) =
+                                workspace.serialize_item(item.as_ref(), true, window, cx)
                             {
                                 serialize_tasks.push(task);
                             } else {
@@ -6024,12 +6023,44 @@ impl Workspace {
         self._serialize_workspace_task.take();
         self.bounds_save_task_queued.take();
 
+        let item_task = self.flush_item_serialization(window, cx);
         let bounds_task = self.save_window_bounds(window, cx);
         let serialize_task = self.serialize_workspace_internal(window, cx);
         cx.spawn(async move |_| {
+            item_task.await.log_err();
             bounds_task.await;
             serialize_task.await;
         })
+    }
+
+    fn flush_item_serialization(&mut self, window: &mut Window, cx: &mut App) -> Task<Result<()>> {
+        let items = self.items(cx).fold(HashMap::default(), |mut items, item| {
+            items
+                .entry(item.item_id())
+                .or_insert_with(|| item.boxed_clone());
+            items
+        });
+
+        let serialize_tasks = items
+            .into_values()
+            .filter_map(|item| self.serialize_item(item.as_ref(), false, window, cx))
+            .collect::<Vec<_>>();
+
+        cx.spawn(async move |_| {
+            try_join_all(serialize_tasks).await?;
+            Ok(())
+        })
+    }
+
+    fn serialize_item(
+        &mut self,
+        item: &dyn ItemHandle,
+        closing: bool,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<Task<Result<()>>> {
+        item.to_serializable_item_handle(cx)
+            .and_then(|handle| handle.serialize(self, closing, window, cx))
     }
 
     pub fn root_paths(&self, cx: &App) -> Vec<Arc<Path>> {
